@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Egypt Drive — Prototype</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111;font-family:Arial,sans-serif}
+#game{position:relative;width:100%;height:100%;touch-action:none;background:linear-gradient(#7ec8f5 0 42%,#6b8f48 42% 100%)}
+#road{position:absolute;left:50%;transform:translateX(-50%);width:min(72vw,520px);height:100%;background:#3c3c3c;overflow:hidden}
+#road:before,#road:after{content:"";position:absolute;top:0;bottom:0;width:7px;background:#eee}
+#road:before{left:0}#road:after{right:0}
+.lane{position:absolute;top:-120%;width:9px;height:180px;background:#f4f4f4;left:50%;transform:translateX(-50%);opacity:.85}
+.lane.a{margin-left:-25%}.lane.b{margin-left:25%}
+#player{position:absolute;z-index:5;width:58px;height:100px;bottom:14%;left:50%;transform:translateX(-50%);border-radius:12px 12px 8px 8px;background:#d9a400;border:4px solid #111;box-shadow:0 8px 15px #0008}
+#player:before{content:"";position:absolute;left:9px;right:9px;top:14px;height:30px;border-radius:7px;background:#222}
+#player:after{content:"";position:absolute;left:6px;right:6px;bottom:10px;height:16px;border-radius:4px;background:#111}
+.car{position:absolute;z-index:4;width:54px;height:92px;border-radius:11px;border:3px solid #111;background:#b72d2d;box-shadow:0 5px 10px #0008}
+.car:before{content:"";position:absolute;left:8px;right:8px;top:12px;height:27px;background:#222;border-radius:6px}
+#hud{position:absolute;z-index:20;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;gap:8px;pointer-events:none}
+.box{background:#111c;color:#fff;border:1px solid #fff4;border-radius:12px;padding:8px 11px;font-weight:700;font-size:14px}
+#mission{position:absolute;z-index:20;top:64px;left:50%;transform:translateX(-50%);background:#fff;color:#111;padding:8px 14px;border-radius:20px;font-weight:700;white-space:nowrap}
+#controls{position:absolute;z-index:30;bottom:18px;left:0;right:0;display:flex;justify-content:space-between;align-items:end;padding:0 18px;direction:ltr}
+.pad{display:flex;gap:12px}
+button{width:68px;height:68px;border-radius:50%;border:2px solid #fff8;background:#111b;color:#fff;font-size:28px;font-weight:bold;box-shadow:0 5px 15px #0006}
+button:active{background:#fff;color:#111}
+#pedals{display:flex;flex-direction:column;gap:10px}
+#gas{background:#1b8f45}#brake{background:#a52b2b}
+#start{position:absolute;z-index:50;inset:0;background:#07111dcc;display:flex;align-items:center;justify-content:center}
+.card{width:min(90%,390px);background:#fff;border-radius:22px;padding:25px;text-align:center;color:#111;box-shadow:0 20px 50px #0008}
+.card h1{margin:0 0 8px;font-size:30px}.card p{color:#555;line-height:1.6}
+#play{width:100%;height:52px;border-radius:14px;background:#d9a400;color:#111;border:0;font-size:18px}
+#toast{position:absolute;z-index:40;left:50%;top:50%;transform:translate(-50%,-50%);background:#111e;color:#fff;padding:15px 20px;border-radius:15px;font-weight:700;display:none}
+</style>
+</head>
+<body>
+<div id="game">
+  <div id="road">
+    <div class="lane a"></div><div class="lane b"></div>
+  </div>
+  <div id="player"></div>
+  <div id="hud">
+    <div class="box">السرعة: <span id="speed">0</span> كم/س</div>
+    <div class="box">💰 <span id="money">500</span> جنيه</div>
+  </div>
+  <div id="mission">🚕 المهمة: وصل الراكب — 0%</div>
+  <div id="controls">
+    <div class="pad">
+      <button id="left" aria-label="يسار">◀</button>
+      <button id="right" aria-label="يمين">▶</button>
+    </div>
+    <div id="pedals">
+      <button id="gas" aria-label="بنزين">▲</button>
+      <button id="brake" aria-label="فرامل">▼</button>
+    </div>
+  </div>
+  <div id="toast"></div>
+  <div id="start">
+    <div class="card">
+      <h1>🇪🇬 Egypt Drive</h1>
+      <p>Prototype 0.1<br>نسخة تجريبية للقيادة المصرية على الموبايل.</p>
+      <button id="play">ابدأ القيادة</button>
+    </div>
+  </div>
+</div>
+<script>
+(() => {
+  const road=document.getElementById('road'), player=document.getElementById('player');
+  const speedEl=document.getElementById('speed'), moneyEl=document.getElementById('money'), mission=document.getElementById('mission');
+  let running=false, x=0, speed=0, money=500, progress=0, gas=false, brake=false, left=false, right=false, last=performance.now(), spawn=0;
+  const cars=[];
+  function setKey(id,val){document.getElementById(id).addEventListener('pointerdown',e=>{e.preventDefault();window[id]=true});
+    ['pointerup','pointercancel','pointerleave'].forEach(ev=>document.getElementById(id).addEventListener(ev,e=>{e.preventDefault();window[id]=false}));}
+  setKey('gas',true); setKey('brake',true); setKey('left',true); setKey('right',true);
+  function toast(t){const el=document.getElementById('toast');el.textContent=t;el.style.display='block';setTimeout(()=>el.style.display='none',1200)}
+  function spawnCar(){
+    const c=document.createElement('div'); c.className='car';
+    const lane=Math.random()<.5?-25:25; c.style.left=`calc(50% + ${lane}px)`; c.style.top='-110px';
+    c.dataset.y=-110; road.appendChild(c); cars.push(c);
+  }
+  function reset(){cars.splice(0).forEach(c=>c.remove());x=0;speed=0;progress=0;money=500;moneyEl.textContent=money;player.style.left='50%';mission.textContent='🚕 المهمة: وصل الراكب — 0%'}
+  function frame(now){
+    const dt=Math.min((now-last)/1000,.04); last=now;
+    if(running){
+      if(gas) speed=Math.min(120,speed+75*dt); else speed=Math.max(0,speed-28*dt);
+      if(brake) speed=Math.max(0,speed-120*dt);
+      const steer=(right?1:0)-(left?1:0);
+      x += steer*(120+speed*.35)*dt;
+      const maxX=road.clientWidth/2-42;
+      x=Math.max(-maxX,Math.min(maxX,x));
+      player.style.left=`calc(50% + ${x}px)`;
+      progress=Math.min(100,progress+speed*dt/22);
+      mission.textContent=`🚕 المهمة: وصل الراكب — ${Math.floor(progress)}%`;
+      if(progress>=100){money+=250;progress=0;moneyEl.textContent=money;toast('🎉 وصلت! +250 جنيه');}
+      spawn+=dt;
+      if(spawn>1.3 && speed>25){spawn=0;spawnCar();}
+      for(let i=cars.length-1;i>=0;i--){
+        const c=cars[i]; let y=parseFloat(c.dataset.y)+speed*4.1*dt; c.dataset.y=y;c.style.top=y+'px';
+        const px=road.clientWidth/2+x, cx=c.offsetLeft+c.offsetWidth/2, py=player.offsetTop, cy=y+46;
+        if(Math.abs(px-cx)<48 && Math.abs(py-cy)<75){speed=0;toast('💥 خبطت في عربية!');c.remove();cars.splice(i,1);continue}
+        if(y>innerHeight+120){c.remove();cars.splice(i,1)}
+      }
+      speedEl.textContent=Math.round(speed);
+    }
+    requestAnimationFrame(frame);
+  }
+  document.getElementById('play').addEventListener('click',()=>{reset();running=true;document.getElementById('start').style.display='none';toast('انطلق يا بطل 🇪🇬')});
+  window.addEventListener('keydown',e=>{if(e.key==='ArrowLeft')left=true;if(e.key==='ArrowRight')right=true;if(e.key==='ArrowUp')gas=true;if(e.key==='ArrowDown')brake=true});
+  window.addEventListener('keyup',e=>{if(e.key==='ArrowLeft')left=false;if(e.key==='ArrowRight')right=false;if(e.key==='ArrowUp')gas=false;if(e.key==='ArrowDown')brake=false});
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
